@@ -5,7 +5,8 @@ import datetime
 import tkinter
 from tkinter import messagebox
 
-
+TIME_BETWEEN_ATTEMPTS = 91  # in seconds 
+TIME_AFTER_ERROR = 300  # in seconds
 LOCAL_CLINICS = ['5', '14', '22', '75', '77', '152', '167', '229', '264', '1031', '2078', '2087', '2092']
 COVID_LOCAL_CLINICS = ['75', '77', '167', '2078', '2087', '2092']
 ACTUAL_COVID_CLINICS = ['2078', '2087', '2092']
@@ -98,12 +99,13 @@ def find_appt():
             print(f"Attempt {iterations}", end=" ")
             available_times = check_availability(ACTUAL_COVID_CLINICS + MANUALLY_FOUND_CLINICS, START_DATE, END_DATE)
             if not available_times:
-                print("No success. Waiting 91 seconds, then trying again.")
-                time.sleep(91)
+                print(f"No success. Waiting {TIME_BETWEEN_ATTEMPTS} seconds, then trying again.")
+                time.sleep(TIME_BETWEEN_ATTEMPTS)
             if available_times:
                 print(f"Success! Slot found at {datetime.datetime.now().ctime()}")
     except:
-        time.sleep(300)
+        time.sleep(TIME_AFTER_ERROR)
+        print(f"Error encountered. Waiting for {TIME_AFTER_ERROR} seconds, then trying to reconnect.")
         find_appt()
 
     # This code is to hide the main tkinter window
