@@ -5,44 +5,44 @@ import datetime
 import tkinter
 from tkinter import messagebox
 
-TIME_BETWEEN_ATTEMPTS = 91  # in seconds 
-TIME_AFTER_ERROR = 300  # in seconds
-LOCAL_CLINICS = ['5', '14', '22', '75', '77', '152', '167', '229', '264', '1031', '2078', '2087', '2092']
-COVID_LOCAL_CLINICS = ['75', '77', '167', '2078', '2087', '2092']
-ACTUAL_COVID_CLINICS = ['2078', '2087', '2092']
-MANUALLY_FOUND_CLINICS = ["2071"]
+CITIES = ["Göteborg", "Mölndal", "Partille"]
+LOCAL_CLINICS = ['166', '75', '77', '167', '229', '5', '2087', '2078', '2092', '2094', '264', '1031', '14', '22', '152',
+                 '2071']
+COVID_LOCAL_CLINICS = [{'clinic_ID': '2087', 'appt_ID': '16006'},
+                       {'clinic_ID': '2078', 'appt_ID': '15432'},
+                       {'clinic_ID': '2092', 'appt_ID': '16321'},
+                       {'clinic_ID': '2094', 'appt_ID': '16447'},
+                       {'clinic_ID': '2071', 'appt_ID': '17625'}]
+
 START_DATE = "210702"
 END_DATE = "210716"
-APP_ID = {"2078": "15432",
-          "2087": "16006",
-          "2092": "16321",
-          "2071": "17625"}
-
 
 
 def find_local_clinics():
     list_of_ids = []
     base_url = "https://booking-api.mittvaccin.se/clinique/"
     session = HTMLSession()
+    r = session.get(base_url)
+    counter = 0
+    try:
+        r.html.render()
+        json_response = json.loads(r.text)
 
-    for i in range(0, 3000):
-        print(f"Checking clinic {i}")
-        url = base_url + str(i)
-        query_found = False
+        for clinic in json_response:
+            counter += 1
+            print(f"Checking clinic #{counter}")
+            if "ANVÄNDS EJ" in clinic["name"]:
+                continue
+            city_found = False
+            for city in CITIES:
+                if clinic['city'] == city:
+                    city_found = True
 
-        r = session.get(url)
-        try:
-            r.html.render()
-            if len(r.text) > 0:
-                if '"city":"Göteborg"' in r.text or '"city":"Mölndal"' in r.text:
-                    query_found = True
-
-            if query_found:
-                list_of_ids.append(str(i))
-                print(f"Found clinic {i} in the area!")
-
-        except:
-            pass
+            if city_found:
+                list_of_ids.append(clinic["id"])
+                print(f"Found clinic {clinic['id']} in the area!")
+    except:
+        pass
 
     return list_of_ids
 
@@ -51,24 +51,25 @@ def check_covid_appt(clinics):
     session = HTMLSession()
     list_of_covid_clinics = []
 
-
     for clinic in clinics:
         url = f"https://booking-api.mittvaccin.se/clinique/{clinic}/appointmentTypes"
         r = session.get(url)
         r.html.render()
-        if "covid" in r.text.lower() and "vaccin" in r.text.lower():
-            # if not "covid-19 antikroppstest" in r.text.lower() or "antikroppstest covid-19":
-            list_of_covid_clinics.append(clinic)
-            print(f"Found clinic {clinic} with covid appointments!")
+        json_response = json.loads(r.text)
+        for appointment in json_response:
+            if "covid" in appointment["name"].lower() and "vaccin" in appointment["name"].lower():
+                list_of_covid_clinics.append({"clinic_ID": clinic,
+                                              "appt_ID": appointment["id"]})
 
     return list_of_covid_clinics
+
 
 def check_availability(clinics, start_date, end_date):
     session = HTMLSession()
     available_times = []
 
     for clinic in clinics:
-        url = f"https://booking-api.mittvaccin.se/clinique/{clinic}/appointments/{APP_ID[clinic]}/slots/{start_date}-{end_date}"
+        url = f"https://booking-api.mittvaccin.se/clinique/{clinic['clinic_ID']}/appointments/{clinic['appt_ID']}/slots/{start_date}-{end_date}"
         r = session.get(url)
         r.html.render()
         if '"available":true' in r.text:
@@ -76,36 +77,36 @@ def check_availability(clinics, start_date, end_date):
             for date_dict in jr:
                 for slot in date_dict["slots"]:
                     if slot["available"]:
-                        available_times.append({"clinic": clinic,
+                        available_times.append({"clinic": clinic['clinic_ID'],
                                                 "date": date_dict["date"],
                                                 "time": slot["when"]})
     return available_times
 
 
+def find_appt(fast_search=True):
+    if not fast_search:
+        local_clinics = find_local_clinics()
+        print(f"Local clinics: {local_clinics}")
+        covid_clincs = check_covid_appt(local_clinics)
+        print(covid_clincs)
 
-
-
-
-def find_appt():
-    #local_clinics = find_local_clinics()
-    #print(f"Local clinics: {local_clinics}")
-    # covid_clincs = check_covid_appt(LOCAL_CLINICS)
-    # print(covid_clincs)
     available_times = []
     iterations = 0
     try:
         while not available_times:
             iterations += 1
             print(f"Attempt {iterations}", end=" ")
-            available_times = check_availability(ACTUAL_COVID_CLINICS + MANUALLY_FOUND_CLINICS, START_DATE, END_DATE)
+            if fast_search:
+                available_times = check_availability(COVID_LOCAL_CLINICS, START_DATE, END_DATE)
+            else:
+                available_times = check_availability(covid_clincs, START_DATE, END_DATE)
             if not available_times:
-                print(f"No success. Waiting {TIME_BETWEEN_ATTEMPTS} seconds, then trying again.")
-                time.sleep(TIME_BETWEEN_ATTEMPTS)
+                print("No success. Waiting 91 seconds, then trying again.")
+                time.sleep(91)
             if available_times:
                 print(f"Success! Slot found at {datetime.datetime.now().ctime()}")
     except:
-        time.sleep(TIME_AFTER_ERROR)
-        print(f"Error encountered. Waiting for {TIME_AFTER_ERROR} seconds, then trying to reconnect.")
+        time.sleep(300)
         find_appt()
 
     # This code is to hide the main tkinter window
